@@ -1,0 +1,61 @@
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h> 
+
+#define SHMSZ_LOWER_LIMIT     10 * 1024
+
+int main(int argc, char **argv)
+{
+    printf("reader: started.\n");
+    key_t keyShm;
+    int shmid;
+    char *shm;
+     
+    // IPC ключ для сегмента shared memory, файл с именем "file4ipckey" должен существовать в workspace директории
+    if((keyShm = ftok("../../file4ipckey2", 0)) < 0) {
+        perror("Can`t generate IPC key");
+        exit(EXIT_FAILURE);
+    }
+        
+    if((shmid = shmget(keyShm, 0, 0666)) < 0) {
+        perror("Can`t get shared memory segment");
+        exit(EXIT_FAILURE);
+    }
+    printf("reader: got memory segment [key=%u].\n", (unsigned int)keyShm);
+
+
+    if ((shm = shmat(shmid, NULL, 0)) == (char*)-1) {
+        perror("Can`t attach to shared memory segment\n");
+        exit(EXIT_FAILURE);
+    }
+    printf("reader: attached to shared memory segment [key=%u].\n", (unsigned int)keyShm);
+
+    //посимвольно считываем содержимое сегмента памяти, выводя его в консоль
+    {
+        printf("reader: text content from shared memory segment [key=%u]:\n", (unsigned int)keyShm);
+        printf("-------------------------------------------------------------\n");
+        
+        for (char* s = shm; *s != '\0' ; s++)
+            putchar(*s);
+        putchar('\n');
+        printf("-------------------------------------------------------------\n");
+    }
+        
+    if(shmdt(shm) < 0){
+        perror("Can`t detach from  shared memory segment\n");
+        exit(EXIT_FAILURE);
+    }
+    printf("reader: detached from shared memory segment [key=%u].\n", (unsigned int)keyShm);
+        
+    if(shmctl(shmid, IPC_RMID  , NULL) < 0){
+        perror("Can`t delete shared memory segment\n");
+        exit(EXIT_FAILURE);
+    }
+    printf("reader: deleted shared memory segment [key=%u].\n", (unsigned int)keyShm);
+
+    printf("reader: ended.\n");
+    exit(EXIT_SUCCESS);
+}
