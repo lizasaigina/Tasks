@@ -1,0 +1,72 @@
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <fcntl.h>
+
+//при создании сегмента памяти, ее фактический выделенный размер будет округлен кратно PAGE_SIZE в большую сторону
+//выбираем размер памяти с запасом под хранение стоки с тексом .c-файла, а именно 10 Кб
+#define SHMSZ_LOWER_LIMIT       10 * 1024 * sizeof(char) 
+
+//считаем что в файле main.c количество символов не превышает данную величину
+#define FILELINE_MAX_LENGTH    10000
+
+
+int main(int argc, char **argv)
+{
+    printf("writer: started.\n");
+    key_t keyShm;
+    int shmid;
+    char *shm;
+    
+    // IPC ключ для сегмента shared memory, файл с именем "file4ipckey" должен существовать в workspace директории
+    if((keyShm = ftok("../../file4ipckey2", 0)) < 0) {
+        perror("Can`t generate IPC key\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    if((shmid = shmget(keyShm, SHMSZ_LOWER_LIMIT, IPC_CREAT | 0666)) < 0) {
+        perror("Can`t create shared memory segment\n");
+        exit(EXIT_FAILURE);
+    }
+    printf("writer: created shared memory segment [key=%u].\n", (unsigned int)keyShm);
+
+    if ((shm = shmat(shmid, NULL, 0)) == (char*)-1) {
+        perror("Can`t attach to shared memory segment\n");
+        exit(EXIT_FAILURE);
+    }
+    printf("writer: attached to shared memory segment [key=%u].\n", (unsigned int)keyShm);
+
+    {
+        
+        FILE* fpSourceFile = fopen("../main.c" , "r");
+        if(fpSourceFile == NULL) {
+            perror("writer: couldn't open file main.c");
+            exit(EXIT_FAILURE);
+        }
+        
+        char *s = shm;
+        char c;
+        while ((c = getc(fpSourceFile)) != EOF)
+            *s++ = c;
+            
+        *s = '\0';
+
+        fclose(fpSourceFile);
+ 
+        printf("writer: wrote text into shared memory segment [key=%u].\n", (unsigned int)keyShm);
+    }
+
+        
+    if(shmdt(shm) < 0){
+        perror("Can`t detach from  shared memory segment\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    printf("writer: detached from shared memory segment [key=%u].\n", (unsigned int)keyShm);
+
+    printf("writer: ended.\n");
+    exit(EXIT_SUCCESS);
+}
